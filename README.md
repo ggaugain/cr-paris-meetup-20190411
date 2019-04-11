@@ -62,8 +62,8 @@ aws_profile='Your profile in .aws/'
     ├── ecs.yml
     ├── event-handling.yml
     ├── fargate.yml
-    ├── lambda-ecs-stop.yml
     └── vpc-3azs.yml
+    
 ```
 
 ## Container or not?
