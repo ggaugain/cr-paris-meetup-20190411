@@ -1,0 +1,122 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create cluster on ECS and public loadbalancer (ALB)
+## Docs : https://docs.aws.amazon.com/fr_fr/AWSCloudFormation/latest/UserGuide/template-reference.html
+
+############################################################
+###                    Parameters                        ###
+Parameters:
+  ParamEcsClusterName:
+    Description: 'VPC name'
+    Type: String
+  ParamCloudWatchLogsGroupName:
+    Description: 'CloudWatch Logs Group'
+    Type: String
+  ParamCloudWatchLogsRetentionInDays:
+    Description: 'CloudWatch Logs Retention In Days'
+    Type: String
+
+############################################################
+###                     Resources                        ###
+Resources:
+
+  ###                ECS                ###
+  # Creates an Amazon Elastic Container Service (Amazon ECS) cluster. This resource has no properties.
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref ParamEcsClusterName
+
+  ###          LoadBalancer             ###
+  # Creates an Application Load Balancer
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: alb-appli
+      Subnets:
+        - !ImportValue 'PublicSubnetAZ1' # From infra/vpc-3azs.yml Outputs
+        - !ImportValue 'PublicSubnetAZ2' # From infra/vpc-3azs.yml Outputs
+        - !ImportValue 'PublicSubnetAZ3' # From infra/vpc-3azs.yml Outputs
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+
+  # Listener for an Application Load Balancer
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref DefaultTargetGroup
+  
+  # A target group that routes requests to one or more registered targets. 
+  DefaultTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: default
+      VpcId: !ImportValue 'VPC'
+      Protocol: 'HTTP'
+      Port: '80'  
+
+  ###              Cloudwatch           ###
+  # Resource creates an Amazon CloudWatch Logs log group
+  CloudWatchLogsGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Ref ParamCloudWatchLogsGroupName
+      RetentionInDays: !Ref ParamCloudWatchLogsRetentionInDays
+
+  ###           Security Group          ###
+  # Creates an Amazon EC2 security group for Load Balancer
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for loadbalancer to services on ECS
+      VpcId: !ImportValue 'VPC'
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: -1
+
+  # Creates an Amazon EC2 security group for containers
+  ContainerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup      
+    Properties:
+     VpcId: !ImportValue 'VPC'
+     GroupDescription: for ecs containers
+     SecurityGroupIngress:
+       - SourceSecurityGroupId: !Ref 'LoadBalancerSecurityGroup'
+         IpProtocol: -1
+
+############################################################
+###                       Outputs                        ###
+Outputs:
+  
+  Cluster:
+    Value: !Ref ECSCluster
+    Export:
+      Name: 'ECSCluster'
+
+  Listener:
+    Description: listener port 80
+    Value: !Ref LoadBalancerListener
+    Export:
+      Name: 'Listener'
+
+  ContainerSecurityGroup:
+    Description: container security group
+    Value: !Ref ContainerSecurityGroup
+    Export:
+      Name: 'ContainerSecurityGroup'
+
+  LoadBalancerDNS:
+    Description: Domain name for the loadbalancer
+    Value: !GetAtt LoadBalancer.DNSName
+    Export:
+      Name: 'DomainName'
+
+  CloudWatchLogsGroup:
+    Description: Cloudwatch log groups for containers 
+    Value: !Ref CloudWatchLogsGroup
+    Export:
+      Name: 'CloudwatchLogGroup'

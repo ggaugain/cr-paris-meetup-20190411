@@ -1,0 +1,42 @@
+[
+    {
+        "ParameterKey": "ParamVpcName",
+        "ParameterValue": "ParisMeetup-VPC"
+    },
+    {
+        "ParameterKey": "ParamIgwName",
+        "ParameterValue": "ParisMeetup-IGW"
+    },
+    {
+        "ParameterKey": "ParamNatGatewayName",
+        "ParameterValue": "ParisMeetup-NAT"
+    },
+    {
+      "ParameterKey": "ParamSubnetVPC",
+      "ParameterValue": "10.0.0.0/16"
+    },
+    {
+        "ParameterKey": "ParamSubnetPublicA",
+        "ParameterValue": "10.0.0.0/24"
+    },
+    {
+        "ParameterKey": "ParamSubnetPublicB",
+        "ParameterValue": "10.0.1.0/24"
+    },
+    {
+        "ParameterKey": "ParamSubnetPublicC",
+        "ParameterValue": "10.0.2.0/24"
+    },
+    {
+        "ParameterKey": "ParamSubnetPrivateA",
+        "ParameterValue": "10.0.3.0/24"
+    },
+    {
+        "ParameterKey": "ParamSubnetPrivateB",
+        "ParameterValue": "10.0.4.0/24"
+    },
+    {
+        "ParameterKey": "ParamSubnetPrivateC",
+        "ParameterValue": "10.0.5.0/24"
+    }
+  ]

@@ -1,0 +1,192 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ECS event handling with Cloudwatch Rule and Lambda Function
+## Docs : https://docs.aws.amazon.com/fr_fr/AWSCloudFormation/latest/UserGuide/template-reference.html
+
+############################################################
+###                     Resources                        ###
+Resources:
+
+  ###                  DynamoDB             ###
+  # Stores both task and container instance state change events, and saves them to Amazon DynamoDB tables.
+  ECSStateChange:
+    Type: AWS::DynamoDB::Table
+    Properties: 
+      AttributeDefinitions: 
+        - 
+          AttributeName: "resources"
+          AttributeType: "S"
+        - 
+          AttributeName: "detail-type"
+          AttributeType: "S"
+        - 
+          AttributeName: "event-time"
+          AttributeType: "S"
+        - 
+          AttributeName: "clusterArn"
+          AttributeType: "S"
+        - 
+          AttributeName: "startedAt"
+          AttributeType: "S"
+        - 
+          AttributeName: "stoppingAt"
+          AttributeType: "S"
+        - 
+          AttributeName: "desiredStatus"
+          AttributeType: "S"
+        - 
+          AttributeName: "lastStatus"
+          AttributeType: "S"          
+      KeySchema:
+        - 
+          AttributeName: "resources"
+          KeyType: "HASH"
+        - 
+          AttributeName: "detail-type"
+          KeyType: "RANGE"
+      TableName: "ECSStateChange"
+      ProvisionedThroughput:
+        ReadCapacityUnits: "5"
+        WriteCapacityUnits: "5"
+      GlobalSecondaryIndexes:
+      - IndexName: EventIndex
+        KeySchema: 
+          - AttributeName: "event-time"
+            KeyType: "HASH"
+          - AttributeName: "clusterArn"
+            KeyType: "RANGE"            
+        Projection: 
+          ProjectionType: "ALL"            
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+      - IndexName: AtIndex
+        KeySchema: 
+          - AttributeName: startedAt
+            KeyType: "HASH"
+          - AttributeName: stoppingAt
+            KeyType: "RANGE"
+        Projection: 
+          ProjectionType: "ALL"            
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+      - IndexName: StatusIndex
+        KeySchema: 
+          - AttributeName: desiredStatus
+            KeyType: "HASH"
+          - AttributeName: lastStatus
+            KeyType: "RANGE"
+        Projection:
+          ProjectionType: "ALL"            
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1          
+
+  ###            Lambda Functions           ###
+  # Captures & saves event to DynamoDB
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref "AWS::StackName" 
+      Description: >
+        Captures both task and container instance state change events, and saves them to Amazon DynamoDB tables.
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          def lambda_handler(event, context):
+              type = ""
+              resources = ""
+              
+              # For debugging so you can see raw event format.
+              # print(json.dumps(event))
+              if event["source"] != "aws.ecs":
+                raise ValueError("Function only supports input from events with a source type of: aws.ecs")
+              # Switch on task/container events.
+              # Response Syntax: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.stop_task
+              table_name = "ECSStateChange"
+              
+              if event["detail-type"] == "ECS Task State Change":
+                  resources = event["detail"]["taskArn"]
+              elif event["detail-type"] == "ECS Container Instance State Change":
+                  resources = event["detail"]["containerInstanceArn"]
+              else:
+                  raise ValueError("detail-type for event is not a supported type. Exiting without saving event.")
+              # Put event input to Dynamodb Table.
+              dynamodb = boto3.resource('dynamodb').Table(table_name)
+              item = {
+                  'resources': resources,
+                  'detail-type': event["detail-type"],
+                  'event-time': event["time"],
+                  'clusterArn': event["detail"]["clusterArn"],
+                  'startedAt': event["detail"]["startedAt"],
+                  'stoppingAt': event["detail"]["stoppingAt"],
+                  'lastStatus': event["detail"]["lastStatus"],
+                  'desiredStatus': event["detail"]["desiredStatus"],
+                }
+              
+              dynamodb.put_item(Item=item)
+
+
+      Handler: index.lambda_handler
+      MemorySize: 128
+      Role: 
+        Fn::GetAtt: 
+          - "LambdaExecutionRole"
+          - "Arn"
+      Runtime: python3.7
+      Timeout: 25
+
+  ###                Cloudwatch             ###
+  # Rules route events from your AWS resources for processing by selected targets.
+  CloudwatchRules:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${AWS::StackName}-ecs-event"
+      Description: "Rules route events from ECS to Lambda Function."
+      EventPattern: 
+        source: 
+          - "aws.ecs"
+        detail-type: 
+          - "ECS Task State Change"
+      State: "ENABLED"     
+      Targets:
+        - Arn: !Sub ${LambdaFunction.Arn}
+          Id: LambdaFunction
+
+  # The function policy grants a specific AWS service or application permission to invoke the function.
+  PermissionForEventsToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties: 
+      FunctionName: !GetAtt 
+        - LambdaFunction
+        - Arn
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt 
+        - CloudwatchRules
+        - Arn
+
+  ###                  IAM                  ###
+  # Lambda Execution role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: EventHandling
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Sid: TaskManagement
+                Effect: Allow
+                Action: "*"
+                Resource: "*"

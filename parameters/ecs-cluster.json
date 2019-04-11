@@ -1,0 +1,14 @@
+[
+    {
+      "ParameterKey": "ParamEcsClusterName",
+      "ParameterValue": "ParisMeetupCluster"
+    },
+    {
+      "ParameterKey": "ParamCloudWatchLogsGroupName",
+      "ParameterValue": "ParisMeetupCluster"
+    },
+    {
+      "ParameterKey": "ParamCloudWatchLogsRetentionInDays",
+      "ParameterValue": "1"
+    }
+  ]

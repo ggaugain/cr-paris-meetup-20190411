@@ -1,0 +1,385 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: VPC with public and private subnets in three availability zones (AZ).
+## Docs : https://docs.aws.amazon.com/fr_fr/AWSCloudFormation/latest/UserGuide/template-reference.html
+
+############################################################
+###                    Parameters                        ###
+Parameters:
+  ParamVpcName:
+    Description: 'VPC name'
+    Type: String
+  ParamIgwName:
+     Description: 'Internet gateway name'
+     Type: String
+  ParamNatGatewayName:
+     Description: 'NAT gateway name'
+     Type: String
+  ParamSubnetVPC:
+    Description: 'VPC: CIDR'
+    Type: String
+  ParamSubnetPublicA:
+    Description: 'Subnet Public 1 (A): CIDR'
+    Type: String
+  ParamSubnetPublicB:
+    Description: 'Subnet Public 2 (B): CIDR'
+    Type: String
+  ParamSubnetPublicC:
+    Description: 'Subnet Public 3(C): CIDR'
+    Type: String
+  ParamSubnetPrivateA:
+    Description: 'Subnet Private 1 (A): CIDR'
+    Type: String
+  ParamSubnetPrivateB:
+    Description: 'Subnet Private 2 (B): CIDR'
+    Type: String
+  ParamSubnetPrivateC:
+    Description: 'Subnet Private 3 (C): CIDR'
+    Type: String
+
+############################################################
+###                     Resources                        ###
+Resources:
+
+  ###               VPC                 ###
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref ParamSubnetVPC
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      InstanceTenancy: default
+      Tags:
+      - Key: Name
+        Value:  !Ref ParamVpcName
+
+  ### VPC internet access (InternetGateway) ###
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Ref ParamIgwName
+    DependsOn: VPC
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  ###           Public Subnets          ###
+  # Create three public subnets
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref ParamSubnetPublicA
+      AvailabilityZone: !Select [ 0, !GetAZs ] # Select first AZ
+      Tags:
+      - Key: Name
+        Value: PublicSubA
+      - Key: Reach
+        Value: Public
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref ParamSubnetPublicB
+      AvailabilityZone: !Select [ 1, !GetAZs ] # Select second AZ
+      Tags:
+      - Key: Name
+        Value: PublicSubB
+      - Key: Reach
+        Value: Public
+  PublicSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref ParamSubnetPublicC
+      AvailabilityZone: !Select [ 2, !GetAZs ] # Select third AZ
+      Tags:
+      - Key: Name
+        Value: PublicSubC
+      - Key: Reach
+        Value: Public
+
+  ###          Private Subnets          ###
+  # Create three private subnets
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref ParamSubnetPrivateA
+      AvailabilityZone: !Select [ 0, !GetAZs ]  # Select first AZ
+      Tags:
+      - Key: Name
+        Value: PrivateSubA
+      - Key: Reach
+        Value: Private
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref ParamSubnetPrivateB
+      AvailabilityZone: !Select [ 1, !GetAZs ]  # Select second AZ
+      Tags:
+      - Key: Name
+        Value: PrivateSubB
+      - Key: Reach
+        Value: Private
+  PrivateSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref ParamSubnetPrivateC
+      AvailabilityZone: !Select [ 2, !GetAZs ]  # Select third AZ
+      Tags:
+      - Key: Name
+        Value: PrivateSubC
+      - Key: Reach
+        Value: Private
+
+  ###        Public Routing Tables      ###
+  PublicARouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: PublicA
+  PublicBRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: PublicB
+  PublicCRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: PublicC
+
+  # Public route tables has direct routing to IGW
+  PublicARouteToInternet:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicARouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicBRouteToInternet:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicBRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicCRouteToInternet:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicCRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  ###          NAT Gateway              ###   
+  NATGatewayA:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIPAddressA.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref ParamNatGatewayName, "A" ]]
+  ElasticIPAddressA:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: VPC
+  NATGatewayB:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIPAddressB.AllocationId
+      SubnetId: !Ref PublicSubnetB
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref ParamNatGatewayName, "B" ]]
+  ElasticIPAddressB:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: VPC
+  NATGatewayC:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIPAddressC.AllocationId
+      SubnetId: !Ref PublicSubnetC
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref ParamNatGatewayName, "C" ]]
+  ElasticIPAddressC:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: VPC
+
+  ###    Private Routing Tables         ###    
+  PrivateARouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: PrivateA
+  PrivateBRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: PrivateB
+  PrivateCRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: PrivateC
+        
+  # Private routes table can access web via NAT Gateway
+  PrivateARouteToGateway:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateARouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayA # Route traffic through the NAT Gateway (A)
+  PrivateBRouteToGateway:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateBRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayB # Route traffic through the NAT Gateway (B)
+  PrivateCRouteToGateway:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateCRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayC # Route traffic through the NAT Gateway (C)
+  
+  ### Attaching Route Tables to Subnets ###
+  # public subnets to public route tables
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicARouteTable
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicBRouteTable
+  PublicSubnetCRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetC
+      RouteTableId: !Ref PublicCRouteTable
+  
+  # private subnets to private route tables
+  PrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateARouteTable
+  PrivateSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateBRouteTable
+  PrivateSubnetCRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetC
+      RouteTableId: !Ref PrivateCRouteTable
+
+  ###          VPC Endpoint             ###
+  # Dynamodb
+  DynamoDBEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: "*"
+            Principal: "*"
+            Resource: "*"
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref 'PrivateARouteTable'
+        - !Ref 'PrivateBRouteTable'
+        - !Ref 'PrivateCRouteTable'
+      ServiceName: !Join [ "", [ "com.amazonaws.", { "Ref": "AWS::Region" }, ".dynamodb" ] ]
+      VpcId: !Ref 'VPC'
+
+############################################################
+###                       Outputs                        ###
+Outputs:
+
+  VPC:
+    Description: VPC
+    Value: !Ref VPC
+    Export:
+      Name: 'VPC'
+
+  PublicSubnetA:
+    Description: 'Public subnet on AZ1'
+    Value: !Ref PublicSubnetA
+    Export:
+      Name: 'PublicSubnetAZ1'
+
+  PublicSubnetB:
+    Description: 'Public subnet on AZ2'
+    Value: !Ref PublicSubnetB
+    Export:
+      Name: 'PublicSubnetAZ2'
+
+  PublicSubnetC:
+    Description: 'Subnet 2 on AZ3'
+    Value: !Ref PublicSubnetC
+    Export:
+      Name: 'PublicSubnetAZ3'
+
+  PrivateSubnetA:
+    Description: 'Private subnet on AZ1'
+    Value: !Ref PrivateSubnetA
+    Export:
+      Name: 'PrivateSubnetAZ1'
+
+  PrivateSubnetB:
+    Description: 'Private subnet on AZ2'
+    Value: !Ref PrivateSubnetB
+    Export:
+      Name: 'PrivateSubnetAZ2'
+
+  PrivateSubnetC:
+    Description: 'Private subnet on AZ3'
+    Value: !Ref PrivateSubnetC
+    Export:
+      Name: 'PrivateSubnetAZ3'
+
+  PrivateARouteTable:
+    Description: 'Private Route Table on AZ1'
+    Value: !Ref PrivateARouteTable
+    Export:
+      Name: 'PrivateARouteTable'
+
+  PrivateBRouteTable:
+    Description: 'Private Route Table on AZ2'
+    Value: !Ref PrivateBRouteTable
+    Export:
+      Name: 'PrivateBRouteTable'
+
+  PrivateCRouteTable:
+    Description: 'Private Route Table on AZ3'
+    Value: !Ref PrivateCRouteTable
+    Export:
+      Name: 'PrivateCRouteTable'
